@@ -1,1 +1,33 @@
+# Python cache files
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Flask
+instance/
+.webassets-cache
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Media / temp files (optional)
+*.mp4
+*.avi
+
+# Jupyter (if ever used)
+.ipynb_checkpoints/
+
