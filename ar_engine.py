@@ -4,6 +4,9 @@ import numpy as np
 import math
 from collections import deque
 
+# -------------------------------
+# MediaPipe Setup
+# -------------------------------
 mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(
     static_image_mode=False,
@@ -13,7 +16,14 @@ face_mesh = mp_face_mesh.FaceMesh(
 
 cap = cv2.VideoCapture(0)
 
-# Glasses styles per face shape
+# -------------------------------
+# Global face shape (for UI badge)
+# -------------------------------
+current_face_shape = "Detecting..."
+
+# -------------------------------
+# Glasses recommendation mapping
+# -------------------------------
 glasses_styles = {
     "Round": [
         cv2.imread("assets/rect_1.png", cv2.IMREAD_UNCHANGED),
@@ -26,17 +36,34 @@ glasses_styles = {
     "Oval": [
         cv2.imread("assets/oval_1.png", cv2.IMREAD_UNCHANGED),
         cv2.imread("assets/oval_2.png", cv2.IMREAD_UNCHANGED)
+    ],
+    "Heart": [
+        cv2.imread("assets/oval_1.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/rect_1.png", cv2.IMREAD_UNCHANGED)
+    ],
+    "Diamond": [
+        cv2.imread("assets/oval_2.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/round_1.png", cv2.IMREAD_UNCHANGED)
+    ],
+    "Oblong": [
+        cv2.imread("assets/round_2.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/rect_2.png", cv2.IMREAD_UNCHANGED)
     ]
 }
 
 style_index = 0
 
+# -------------------------------
 # Smoothing buffers
+# -------------------------------
 x_buffer = deque(maxlen=5)
 y_buffer = deque(maxlen=5)
 width_buffer = deque(maxlen=5)
 shape_buffer = deque(maxlen=7)
 
+# -------------------------------
+# Style controls (buttons)
+# -------------------------------
 def next_style():
     global style_index
     style_index = (style_index + 1) % 2
@@ -45,6 +72,12 @@ def prev_style():
     global style_index
     style_index = (style_index - 1) % 2
 
+def get_face_shape():
+    return current_face_shape
+
+# -------------------------------
+# Overlay PNG helper
+# -------------------------------
 def overlay_transparent(bg, overlay, x, y, size):
     overlay = cv2.resize(overlay, size)
 
@@ -73,16 +106,45 @@ def overlay_transparent(bg, overlay, x, y, size):
 
     return bg
 
-def classify_face_shape(w, h):
-    r = h / w
-    if r < 1.2:
-        return "Round"
-    elif r < 1.35:
-        return "Square"
-    else:
-        return "Oval"
+# -------------------------------
+# 6 Face Shape Classification (TUNED)
+# -------------------------------
+def classify_face_shape(face_h, face_w, jaw_w, cheek_w, forehead_w):
+    ratio = face_h / face_w
 
+    jaw_r = jaw_w / face_w
+    cheek_r = cheek_w / face_w
+    forehead_r = forehead_w / face_w
+
+    # Oblong (Rectangle)
+    if ratio > 1.5 and abs(jaw_r - cheek_r) < 0.07:
+        return "Oblong"
+
+    # Diamond
+    if cheek_r > forehead_r and cheek_r > jaw_r:
+        return "Diamond"
+
+    # Heart
+    if forehead_r > cheek_r and jaw_r < cheek_r * 0.9:
+        return "Heart"
+
+    # Square
+    if ratio < 1.25 and abs(jaw_r - cheek_r) < 0.05:
+        return "Square"
+
+    # Round
+    if ratio < 1.25:
+        return "Round"
+
+    # Oval
+    return "Oval"
+
+# -------------------------------
+# Frame generator (Flask stream)
+# -------------------------------
 def generate_frame():
+    global current_face_shape
+
     ret, frame = cap.read()
     if not ret:
         return None
@@ -91,28 +153,24 @@ def generate_frame():
     h, w, _ = frame.shape
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    result = face_mesh.process(rgb)
+    results = face_mesh.process(rgb)
 
-    if result.multi_face_landmarks:
-        lm = result.multi_face_landmarks[0].landmark
+    if results.multi_face_landmarks:
+        lm = results.multi_face_landmarks[0].landmark
 
         # Eye landmarks
         x1, y1 = int(lm[33].x * w), int(lm[33].y * h)
         x2, y2 = int(lm[263].x * w), int(lm[263].y * h)
 
-        # Eye center (KEY FIX)
         eye_center_x = (x1 + x2) // 2
         eye_center_y = (y1 + y2) // 2
 
-        # Glasses size
         eye_width = int(math.dist((x1, y1), (x2, y2)) * 1.9)
         glasses_height = int(eye_width * 0.5)
 
-        # Correct placement (slightly BELOW eye line)
         x = eye_center_x - eye_width // 2
         y = eye_center_y - glasses_height // 2 + int(glasses_height * 0.05)
 
-        # Smoothing
         x_buffer.append(x)
         y_buffer.append(y)
         width_buffer.append(eye_width)
@@ -122,27 +180,27 @@ def generate_frame():
         sw = int(np.mean(width_buffer))
         sh = int(sw * 0.5)
 
-        # Face shape
-        fw = math.dist((lm[234].x, lm[234].y), (lm[454].x, lm[454].y)) * w
-        fh = math.dist((lm[10].x, lm[10].y), (lm[152].x, lm[152].y)) * h
+        # Facial measurements
+        face_width = math.dist((lm[234].x, lm[234].y), (lm[454].x, lm[454].y)) * w
+        face_height = math.dist((lm[10].x, lm[10].y), (lm[152].x, lm[152].y)) * h
+        forehead_width = math.dist((lm[67].x, lm[67].y), (lm[297].x, lm[297].y)) * w
+        cheekbone_width = math.dist((lm[123].x, lm[123].y), (lm[352].x, lm[352].y)) * w
+        jaw_width = math.dist((lm[172].x, lm[172].y), (lm[397].x, lm[397].y)) * w
 
-        shape = classify_face_shape(fw, fh)
+        shape = classify_face_shape(
+            face_height,
+            face_width,
+            jaw_width,
+            cheekbone_width,
+            forehead_width
+        )
+
         shape_buffer.append(shape)
         stable_shape = max(set(shape_buffer), key=shape_buffer.count)
+        current_face_shape = stable_shape
 
         glasses = glasses_styles[stable_shape][style_index]
-
         frame = overlay_transparent(frame, glasses, sx, sy, (sw, sh))
-
-        cv2.putText(
-            frame,
-            f"{stable_shape} Face",
-            (30, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            1,
-            (255, 0, 0),
-            3
-        )
 
     _, jpeg = cv2.imencode(".jpg", frame)
     return jpeg.tobytes()

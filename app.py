@@ -1,5 +1,10 @@
 from flask import Flask, render_template, Response
-from ar_engine import generate_frame, next_style, prev_style
+from ar_engine import (
+    generate_frame,
+    next_style,
+    prev_style,
+    get_face_shape
+)
 
 app = Flask(__name__)
 
@@ -29,6 +34,10 @@ def next_glasses():
 def prev_glasses():
     prev_style()
     return ("", 204)
+
+@app.route("/face-shape")
+def face_shape():
+    return get_face_shape()
 
 if __name__ == "__main__":
     app.run(debug=True)
