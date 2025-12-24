@@ -26,28 +26,37 @@ current_face_shape = "Detecting..."
 # -------------------------------
 glasses_styles = {
     "Round": [
-        cv2.imread("assets/rect_1.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/rect_2.png", cv2.IMREAD_UNCHANGED)
+       
+        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/geometric.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/square.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/windsor.png", cv2.IMREAD_UNCHANGED)
     ],
     "Square": [
-        cv2.imread("assets/round_1.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/round_2.png", cv2.IMREAD_UNCHANGED)
+        cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED)
     ],
     "Oval": [
-        cv2.imread("assets/oval_1.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/oval_2.png", cv2.IMREAD_UNCHANGED)
+      
+        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED)
+
     ],
     "Heart": [
-        cv2.imread("assets/oval_1.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/rect_1.png", cv2.IMREAD_UNCHANGED)
+        
+        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED)
     ],
     "Diamond": [
-        cv2.imread("assets/oval_2.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/round_1.png", cv2.IMREAD_UNCHANGED)
+        cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
     ],
     "Oblong": [
-        cv2.imread("assets/round_2.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/rect_2.png", cv2.IMREAD_UNCHANGED)
+        cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED),
+        cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED)
     ]
 }
 
@@ -116,28 +125,38 @@ def classify_face_shape(face_h, face_w, jaw_w, cheek_w, forehead_w):
     cheek_r = cheek_w / face_w
     forehead_r = forehead_w / face_w
 
-    # Oblong (Rectangle)
-    if ratio > 1.5 and abs(jaw_r - cheek_r) < 0.07:
+    # 1️⃣ Oblong (Rectangle) – long face, straight sides
+    if ratio > 1.5 and abs(jaw_r - cheek_r) < 0.06:
         return "Oblong"
 
-    # Diamond
-    if cheek_r > forehead_r and cheek_r > jaw_r:
-        return "Diamond"
-
-    # Heart
-    if forehead_r > cheek_r and jaw_r < cheek_r * 0.9:
+    # 2️⃣ Heart – wide forehead, narrow jaw
+    if forehead_r > cheek_r + 0.03 and jaw_r < cheek_r - 0.04:
         return "Heart"
 
-    # Square
+    # 3️⃣ Diamond – rare, sharp cheekbones
+    if (
+        cheek_r > forehead_r + 0.05 and
+        cheek_r > jaw_r + 0.05 and
+        ratio > 1.3
+    ):
+        return "Diamond"
+
+    # 4️⃣ Square – strong jaw, similar width & height
     if ratio < 1.25 and abs(jaw_r - cheek_r) < 0.05:
         return "Square"
 
-    # Round
-    if ratio < 1.25:
+    # 5️⃣ Round – soft curves, equal width & height
+    # Round – soft curves, cheeks not dominant
+    if (
+        ratio < 1.25 and
+        cheek_r < forehead_r + 0.03 and
+        cheek_r < jaw_r + 0.03
+    ):
         return "Round"
 
-    # Oval
+    # 6️⃣ Oval – balanced (default)
     return "Oval"
+
 
 # -------------------------------
 # Frame generator (Flask stream)
