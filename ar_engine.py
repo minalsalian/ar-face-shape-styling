@@ -17,50 +17,53 @@ face_mesh = mp_face_mesh.FaceMesh(
 cap = cv2.VideoCapture(0)
 
 # -------------------------------
-# Global face shape (for UI badge)
+# Global State
 # -------------------------------
 current_face_shape = "Detecting..."
+style_index = 0
 
 # -------------------------------
-# Glasses recommendation mapping
+# Glasses mapping (NAME, IMAGE)
 # -------------------------------
 glasses_styles = {
     "Round": [
-       
-        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/geometric.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/square.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/windsor.png", cv2.IMREAD_UNCHANGED)
+        ("Oval", cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED)),
+        ("Cat-Eye", cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED)),
+        ("Square", cv2.imread("assets/square.png", cv2.IMREAD_UNCHANGED)),
+        ("Geometric", cv2.imread("assets/geometric.png", cv2.IMREAD_UNCHANGED)),
+        ("Windsor", cv2.imread("assets/windsor.png", cv2.IMREAD_UNCHANGED)),
     ],
     "Square": [
-        cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED)
+        ("Round", cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED)),
+        ("Oval", cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED)),
+        ("Rimless", cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED)),
     ],
     "Oval": [
-      
-        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED)
-
+        ("Oval", cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED)),
+        ("Cat-Eye", cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED)),
+        ("Geometric", cv2.imread("assets/geometric.png", cv2.IMREAD_UNCHANGED)),
+        ("Rimless", cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED)),
+        ("Windsor", cv2.imread("assets/windsor.png", cv2.IMREAD_UNCHANGED)),
     ],
     "Heart": [
-        
-        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED)
+        ("Oval", cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED)),
+        ("Cat-Eye", cv2.imread("assets/cat-eye.png", cv2.IMREAD_UNCHANGED)),
+        ("Geometric", cv2.imread("assets/geometric.png", cv2.IMREAD_UNCHANGED)),
+        ("Windsor", cv2.imread("assets/windsor.png", cv2.IMREAD_UNCHANGED)),
     ],
     "Diamond": [
-        cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED),
+        ("Round", cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED)),
+        ("Oval", cv2.imread("assets/oval.png", cv2.IMREAD_UNCHANGED)),
+        ("Geometric", cv2.imread("assets/geometric.png", cv2.IMREAD_UNCHANGED)),
+        ("Rimless", cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED)),
+        ("Windsor", cv2.imread("assets/windsor.png", cv2.IMREAD_UNCHANGED)),
     ],
     "Oblong": [
-        cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED),
-        cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED)
+        ("Round", cv2.imread("assets/round.png", cv2.IMREAD_UNCHANGED)),
+        ("Geometric", cv2.imread("assets/geometric.png", cv2.IMREAD_UNCHANGED)),
+        ("Rimless", cv2.imread("assets/rimless.png", cv2.IMREAD_UNCHANGED)),
     ]
 }
-
-style_index = 0
 
 # -------------------------------
 # Smoothing buffers
@@ -70,24 +73,35 @@ y_buffer = deque(maxlen=5)
 width_buffer = deque(maxlen=5)
 shape_buffer = deque(maxlen=7)
 
+
 # -------------------------------
-# Style controls (buttons)
+# Style Controls
 # -------------------------------
 def next_style():
-    global style_index
-    style_index = (style_index + 1) % 2
+    global style_index, current_face_shape
+    total = len(glasses_styles.get(current_face_shape, []))
+    if total > 0:
+        style_index = (style_index + 1) % total
+
 
 def prev_style():
-    global style_index
-    style_index = (style_index - 1) % 2
+    global style_index, current_face_shape
+    total = len(glasses_styles.get(current_face_shape, []))
+    if total > 0:
+        style_index = (style_index - 1) % total
+
 
 def get_face_shape():
     return current_face_shape
+
 
 # -------------------------------
 # Overlay PNG helper
 # -------------------------------
 def overlay_transparent(bg, overlay, x, y, size):
+    if overlay is None:
+        return bg
+
     overlay = cv2.resize(overlay, size)
 
     if overlay.shape[2] == 3:
@@ -115,8 +129,9 @@ def overlay_transparent(bg, overlay, x, y, size):
 
     return bg
 
+
 # -------------------------------
-# 6 Face Shape Classification (TUNED)
+# Face Shape Classification
 # -------------------------------
 def classify_face_shape(face_h, face_w, jaw_w, cheek_w, forehead_w):
     ratio = face_h / face_w
@@ -125,44 +140,29 @@ def classify_face_shape(face_h, face_w, jaw_w, cheek_w, forehead_w):
     cheek_r = cheek_w / face_w
     forehead_r = forehead_w / face_w
 
-    # 1️⃣ Oblong (Rectangle) – long face, straight sides
     if ratio > 1.5 and abs(jaw_r - cheek_r) < 0.06:
         return "Oblong"
 
-    # 2️⃣ Heart – wide forehead, narrow jaw
     if forehead_r > cheek_r + 0.03 and jaw_r < cheek_r - 0.04:
         return "Heart"
 
-    # 3️⃣ Diamond – rare, sharp cheekbones
-    if (
-        cheek_r > forehead_r + 0.05 and
-        cheek_r > jaw_r + 0.05 and
-        ratio > 1.3
-    ):
+    if cheek_r > forehead_r + 0.05 and cheek_r > jaw_r + 0.05 and ratio > 1.3:
         return "Diamond"
 
-    # 4️⃣ Square – strong jaw, similar width & height
     if ratio < 1.25 and abs(jaw_r - cheek_r) < 0.05:
         return "Square"
 
-    # 5️⃣ Round – soft curves, equal width & height
-    # Round – soft curves, cheeks not dominant
-    if (
-        ratio < 1.25 and
-        cheek_r < forehead_r + 0.03 and
-        cheek_r < jaw_r + 0.03
-    ):
+    if ratio < 1.25 and cheek_r < forehead_r + 0.03 and cheek_r < jaw_r + 0.03:
         return "Round"
 
-    # 6️⃣ Oval – balanced (default)
     return "Oval"
 
 
 # -------------------------------
-# Frame generator (Flask stream)
+# Frame generator
 # -------------------------------
 def generate_frame():
-    global current_face_shape
+    global current_face_shape, style_index
 
     ret, frame = cap.read()
     if not ret:
@@ -173,6 +173,8 @@ def generate_frame():
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     results = face_mesh.process(rgb)
+
+    current_style_name = ""
 
     if results.multi_face_landmarks:
         lm = results.multi_face_landmarks[0].landmark
@@ -199,7 +201,7 @@ def generate_frame():
         sw = int(np.mean(width_buffer))
         sh = int(sw * 0.5)
 
-        # Facial measurements
+        # Face dimensions
         face_width = math.dist((lm[234].x, lm[234].y), (lm[454].x, lm[454].y)) * w
         face_height = math.dist((lm[10].x, lm[10].y), (lm[152].x, lm[152].y)) * h
         forehead_width = math.dist((lm[67].x, lm[67].y), (lm[297].x, lm[297].y)) * w
@@ -207,19 +209,52 @@ def generate_frame():
         jaw_width = math.dist((lm[172].x, lm[172].y), (lm[397].x, lm[397].y)) * w
 
         shape = classify_face_shape(
-            face_height,
-            face_width,
-            jaw_width,
-            cheekbone_width,
-            forehead_width
+            face_height, face_width, jaw_width, cheekbone_width, forehead_width
         )
 
         shape_buffer.append(shape)
         stable_shape = max(set(shape_buffer), key=shape_buffer.count)
+
+        # Reset styles when face shape changes
+        if stable_shape != current_face_shape:
+            style_index = 0
+
         current_face_shape = stable_shape
 
-        glasses = glasses_styles[stable_shape][style_index]
-        frame = overlay_transparent(frame, glasses, sx, sy, (sw, sh))
+        # Get styles for current shape
+        glasses_list = glasses_styles.get(current_face_shape, [])
+
+        if glasses_list:
+            style_index_mod = style_index % len(glasses_list)
+            current_style_name, glasses = glasses_list[style_index_mod]
+
+            if glasses is not None:
+                frame = overlay_transparent(frame, glasses, sx, sy, (sw, sh))
+
+        # Label background
+        cv2.rectangle(frame, (10, 10), (450, 110), (0, 0, 0), -1)
+
+        # Face shape text
+        cv2.putText(
+            frame,
+            f"Face Shape: {current_face_shape}",
+            (20, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (0, 255, 0),
+            2
+        )
+
+        # Style name text
+        cv2.putText(
+            frame,
+            f"Style: {current_style_name}",
+            (20, 95),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.9,
+            (255, 255, 0),
+            2
+        )
 
     _, jpeg = cv2.imencode(".jpg", frame)
     return jpeg.tobytes()
